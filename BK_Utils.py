@@ -100,3 +100,5 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator"
 }
+
+print(f"[BK_Utils] Node class loaded: {SamePixelResolutionCalculator}")
