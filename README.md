@@ -4,7 +4,7 @@ Currently only one node, the "Collection" part is WIP
 
 
 ### Same Pixel Resolution Calculator
-In order to generate images with the same amount of pixels, but varying aspect ratio (starting from the premis that the amount of pixels defines generation time).
+In order to generate images with the same amount of pixels, but varying aspect ratio (starting from the premise that the amount of pixels defines generation time).
 #### Inputs
 1. Base dimension in pixels
 2. Predefined aspect ratio:
