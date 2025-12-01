@@ -474,6 +474,56 @@ class DynamicGroupSwitchMulti:
         return (default,)
 
 
+# -------------------------------------------------------------
+# Node: SubgraphPromptSwitchAutoDisplay
+# -------------------------------------------------------------
+
+class SubgraphPromptSwitchAutoDisplay:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "wildcard_prompt": ("STRING", {"default": ""}),
+                "ollama_prompt": ("STRING", {"default": ""}),
+                "default_manual_prompt": ("STRING", {"default": ""}),
+                "wildcard_node": ("NODE", {}),
+                "ollama_node": ("NODE", {}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("prompt",)
+    FUNCTION = "switch_prompt"
+    CATEGORY = "🐈‍⬛ BK Utils/Logic"
+
+    def __init__(self):
+        self.current_source = "Default"
+
+    def switch_prompt(self, wildcard_prompt, ollama_prompt, default_manual_prompt, wildcard_node, ollama_node):
+        """
+        Automatically selects the first active prompt from the subgraph nodes.
+        Updates the node label with the active source.
+        """
+        # Check if nodes are bypassed
+        wildcard_active = not getattr(wildcard_node, "bypass", False)
+        ollama_active = not getattr(ollama_node, "bypass", False)
+
+        if wildcard_active:
+            self.current_source = "Wildcard"
+            return (wildcard_prompt,)
+        elif ollama_active:
+            self.current_source = "Ollama"
+            return (ollama_prompt,)
+        else:
+            self.current_source = "Manual"
+            return (default_manual_prompt,)
+
+    @property
+    def display_text(self):
+        # This property is shown in ComfyUI on the node
+        return f"Active Prompt: {self.current_source}"
+
+
 
 # -------------------------------------------------------------
 #  Node Registration (ALL nodes merged here)
@@ -486,6 +536,7 @@ NODE_CLASS_MAPPINGS = {
     "IsOneOfGroupsActive": IsOneOfGroupsActive,
     "DynamicGroupSwitchMulti": DynamicGroupSwitchMulti,
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
+    "SubgraphPromptSwitchAutoDisplay": SubgraphPromptSwitchAutoDisplay,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -495,5 +546,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "IsOneOfGroupsActive": "IsOneOfGroupsActive",
     "DynamicGroupSwitchMulti": "Dynamic Group Switch (3-way)",
     "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator",
+    "SubgraphPromptSwitchAutoDisplay": "Prompt Source Switch",
 }
 
