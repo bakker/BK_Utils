@@ -415,7 +415,7 @@ class IsOneOfGroupsActive:
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("boolean",)
     FUNCTION = "pass_state"
-    CATEGORY = "utils/logic"
+    CATEGORY = "BK Utils/Logic"
 
     @classmethod
     def IS_CHANGED(cls, *args):
