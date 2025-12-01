@@ -87,7 +87,7 @@ class FluxTextSampler:
     RETURN_TYPES = ("LATENT","SAMPLER_PARAMS","STRING")
     RETURN_NAMES = ("latent", "params","model_name")
     FUNCTION = "execute"
-    CATEGORY = "sampling"
+    CATEGORY = "🐈‍⬛ BK Utils/Sampling"
 
     def execute(self, model, conditioning, latent_image, seed, sampler, scheduler, steps, guidance, max_shift, base_shift, denoise):
         is_schnell = model.model.model_type == comfy.model_base.ModelType.FLOW
@@ -241,7 +241,7 @@ class FluxPromptSaver:
     RETURN_TYPES = ()
     FUNCTION = "save_images"
     OUTPUT_NODE = True
-    CATEGORY = "image"
+    CATEGORY = "🐈‍⬛ BK Utils/Image"
 
     def save_images(self, images, params, positive, model_name, filename_prefix, filename, negative=""):
         filename_prefix = self.replace_dates(filename_prefix)
@@ -335,7 +335,7 @@ class ModelName:
 
     RETURN_TYPES = ("STRING",)
     FUNCTION = "get_name"
-    CATEGORY = "utils"
+    CATEGORY = "🐈‍⬛ BK Utils/Utils"
 
     def get_name(self, model_name):
         return (model_name,)
@@ -367,7 +367,7 @@ class SamePixelResolutionCalculator:
     RETURN_TYPES = ("INT","INT")
     RETURN_NAMES = ("width","height")
     FUNCTION = "calculate"
-    CATEGORY = "BK Utils/Resolution Tools"
+    CATEGORY = "🐈‍⬛ BK Utils/Resolution Tools"
 
     def calculate(self, base_size, aspect_preset, custom_aspect_width, custom_aspect_height, round_multiple, portrait_mode):
         presets = {
@@ -415,7 +415,7 @@ class IsOneOfGroupsActive:
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("boolean",)
     FUNCTION = "pass_state"
-    CATEGORY = "BK Utils/Logic"
+    CATEGORY = "🐈‍⬛ BK Utils/Logic"
 
     @classmethod
     def IS_CHANGED(cls, *args):
@@ -423,6 +423,55 @@ class IsOneOfGroupsActive:
 
     def pass_state(self, group_name_contains, active_state):
         return (active_state,)
+
+
+# -------------------------------------------------------------
+# Node: DynamicGroupSwitchMulti
+# -------------------------------------------------------------
+
+class DynamicGroupSwitchMulti:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt_1": ("STRING", {"default": ""}),
+                "group_1": ("STRING", {"default": ""}),
+                "prompt_2": ("STRING", {"default": ""}),
+                "group_2": ("STRING", {"default": ""}),
+                "prompt_3": ("STRING", {"default": ""}),
+                "group_3": ("STRING", {"default": ""}),
+                "default": ("STRING", {"default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("output",)
+    FUNCTION = "switch_input"
+    CATEGORY = "🐈‍⬛ BK Utils/Logic"
+
+    def switch_input(self, prompt_1, group_1, prompt_2, group_2, prompt_3, group_3, default):
+        workflow = getattr(self, "graph", None)
+        if workflow is None:
+            return (default,)
+
+        # Pair prompts with groups
+        prompt_group_pairs = [
+            (prompt_1, group_1),
+            (prompt_2, group_2),
+            (prompt_3, group_3),
+        ]
+
+        # Check each group in order
+        for prompt, group_name in prompt_group_pairs:
+            if not group_name:
+                continue
+            for node in workflow.nodes:
+                if group_name.lower() in (node.group or "").lower():
+                    if not getattr(node, "bypass", False):
+                        return (prompt,)
+
+        # Fallback
+        return (default,)
 
 
 
@@ -435,14 +484,16 @@ NODE_CLASS_MAPPINGS = {
     "FluxTextSampler": FluxTextSampler,
     "ModelName": ModelName,
     "IsOneOfGroupsActive": IsOneOfGroupsActive,
+    "DynamicGroupSwitchMulti": DynamicGroupSwitchMulti,
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FluxPromptSaver": "🐈‍⬛ Flux Prompt Saver",
-    "FluxTextSampler": "🐈‍⬛ Flux Text Sampler",
-    "ModelName": "🐈‍⬛ Model Name",
+    "FluxPromptSaver": "Flux Prompt Saver",
+    "FluxTextSampler": "Flux Text Sampler",
+    "ModelName": "Model Name",
     "IsOneOfGroupsActive": "IsOneOfGroupsActive",
+    "DynamicGroupSwitchMulti": "Dynamic Group Switch (3-way)",
     "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator",
 }
 
