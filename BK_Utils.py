@@ -19,6 +19,11 @@ from comfy_extras.nodes_custom_sampler import Noise_RandomNoise, BasicScheduler,
 from comfy_extras.nodes_latent import LatentBatch
 from comfy_extras.nodes_model_advanced import ModelSamplingFlux, ModelSamplingAuraFlow
 
+
+# -------------------------------------------------------------
+# Utility functions
+# -------------------------------------------------------------
+
 def parse_string_to_list(input_string):
     try:
         if not input_string:
@@ -40,6 +45,7 @@ def parse_string_to_list(input_string):
     except:
         return []
 
+
 def conditioning_set_values(conditioning, values):
     c = []
     for t in conditioning:
@@ -49,6 +55,11 @@ def conditioning_set_values(conditioning, values):
                 n[1]['guidance_scale'] = v
         c.append(tuple(n))
     return c
+
+
+# -------------------------------------------------------------
+# Node: FluxTextSampler
+# -------------------------------------------------------------
 
 class FluxTextSampler:
     @classmethod
@@ -84,40 +95,37 @@ class FluxTextSampler:
         if model_name is None and hasattr(model.model, 'model_config'):
             model_name = model.model.model_config.get("model_name", "UnknownModel")
 
-        # Handle seed
         noise = [seed]
 
         # --- Handle Sampler Input ---
         if isinstance(sampler, list):
-            # Comes from multi-select UI
-            sampler = [s for s in sampler if s in KSampler.SAMPLERS]
+            sampler = [s for s in sampler if s in comfy.samplers.KSampler.SAMPLERS]
         else:
-            # Old-style string input (manual typing)
             if sampler == '*':
-                sampler = KSampler.SAMPLERS
+                sampler = comfy.samplers.KSampler.SAMPLERS
             elif sampler.startswith("!"):
                 sampler = sampler.replace("\n", ",").split(",")
                 sampler = [s.strip("! ") for s in sampler]
-                sampler = [s for s in KSampler.SAMPLERS if s not in sampler]
+                sampler = [s for s in comfy.samplers.KSampler.SAMPLERS if s not in sampler]
             else:
                 sampler = sampler.replace("\n", ",").split(",")
-                sampler = [s.strip() for s in sampler if s.strip() in KSampler.SAMPLERS]
+                sampler = [s.strip() for s in sampler if s.strip() in comfy.samplers.KSampler.SAMPLERS]
         if not sampler:
             sampler = ['euler']
 
         # --- Handle Scheduler Input ---
         if isinstance(scheduler, list):
-            scheduler = [s for s in scheduler if s in KSampler.SCHEDULERS]
+            scheduler = [s for s in scheduler if s in comfy.samplers.KSampler.SCHEDULERS]
         else:
             if scheduler == '*':
-                scheduler = KSampler.SCHEDULERS
+                scheduler = comfy.samplers.KSampler.SCHEDULERS
             elif scheduler.startswith("!"):
                 scheduler = scheduler.replace("\n", ",").split(",")
                 scheduler = [s.strip("! ") for s in scheduler]
-                scheduler = [s for s in KSampler.SCHEDULERS if s not in scheduler]
+                scheduler = [s for s in comfy.samplers.KSampler.SCHEDULERS if s not in scheduler]
             else:
                 scheduler = scheduler.replace("\n", ",").split(",")
-                scheduler = [s.strip() for s in scheduler if s in KSampler.SCHEDULERS]
+                scheduler = [s.strip() for s in scheduler if s in comfy.samplers.KSampler.SCHEDULERS]
         if not scheduler:
             scheduler = ['simple']
 
@@ -125,13 +133,11 @@ class FluxTextSampler:
         if steps == "":
             steps = "4" if is_schnell else "20"
         steps = parse_string_to_list(steps)
-
         denoise = "1.0" if denoise == "" else denoise
         denoise = parse_string_to_list(denoise)
-
         guidance = "3.5" if guidance == "" else guidance
         guidance = parse_string_to_list(guidance)
-        
+
         if not is_schnell:
             max_shift = "1.15" if max_shift == "" else max_shift
             base_shift = "0.5" if base_shift == "" else base_shift
@@ -142,13 +148,7 @@ class FluxTextSampler:
         max_shift = parse_string_to_list(max_shift)
         base_shift = parse_string_to_list(base_shift)
 
-        # --- Handle conditioning ---
-        cond_text = None
-        if isinstance(conditioning, dict) and "encoded" in conditioning:
-            cond_text = conditioning["text"]
-            cond_encoded = conditioning["encoded"]
-        else:
-            cond_encoded = [conditioning]
+        cond_encoded = [conditioning]
 
         out_latent = None
         out_params = []
@@ -167,9 +167,7 @@ class FluxTextSampler:
         if total_samples > 1:
             pbar = ProgressBar(total_samples)
 
-        for i in range(len(cond_encoded)):
-            conditioning = cond_encoded[i]
-            ct = cond_text[i] if cond_text else None
+        for conditioning in cond_encoded:
             for n in noise:
                 randnoise = Noise_RandomNoise(n)
                 for ms in max_shift:
@@ -204,7 +202,6 @@ class FluxTextSampler:
                                                 "max_shift": ms,
                                                 "base_shift": bs,
                                                 "denoise": d,
-                                                "prompt": ct
                                             })
 
                                             if out_latent is None:
@@ -214,13 +211,17 @@ class FluxTextSampler:
                                             if total_samples > 1:
                                                 pbar.update(1)
 
-        return (out_latent, out_params)
+        return (out_latent, out_params, model_name)
+
+
+# -------------------------------------------------------------
+# Node: FluxPromptSaver
+# -------------------------------------------------------------
 
 class FluxPromptSaver:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
-        self.default_size = 1344  # Default image size
 
     @classmethod
     def INPUT_TYPES(s):
@@ -230,20 +231,12 @@ class FluxPromptSaver:
             "params": ("SAMPLER_PARAMS",),
             "positive": ("STRING", {"forceInput": True}),
             "model_name": ("STRING", {"forceInput": True}),
-            "filename_prefix": ("STRING", {
-                "default": "%date:yyyy-MM-dd%",
-                "tooltip": "Subfolder to save the images in. Supports date formatting like %date:yyyy-MM-dd%"
-            }),
-            "filename": ("STRING", {
-                "default": "FLUX_%date:HHmmss%",
-                "tooltip": "Filename for the image. Supports date formatting like %date:HHmmss%"
-            }),
+            "filename_prefix": ("STRING", {"default": "%date:yyyy-MM-dd%"}),
+            "filename": ("STRING", {"default": "FLUX_%date:HHmmss%"}),
         },
         "optional": {
             "negative": ("STRING", {"forceInput": True}),
-        }
-    }
-
+        }}
 
     RETURN_TYPES = ()
     FUNCTION = "save_images"
@@ -251,38 +244,34 @@ class FluxPromptSaver:
     CATEGORY = "image"
 
     def save_images(self, images, params, positive, model_name, filename_prefix, filename, negative=""):
-        # Replace date placeholders with actual date strings
-        filename_prefix = self.replace_date_placeholders(filename_prefix)
-        filename = self.replace_date_placeholders(filename)
+        filename_prefix = self.replace_dates(filename_prefix)
+        filename = self.replace_dates(filename)
 
         results = []
         p = params[0]
 
-        # Construct the full output folder path
-        full_output_folder = os.path.join(self.output_dir, filename_prefix)
-        os.makedirs(full_output_folder, exist_ok=True)
+        full_output = os.path.join(self.output_dir, filename_prefix)
+        os.makedirs(full_output, exist_ok=True)
 
         for image in images:
             i = 255. * image.cpu().numpy()
             img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
 
             metadata = PngInfo()
-            metadata.add_text("parameters", self.create_metadata_string(p, positive, negative, model_name))
+            metadata.add_text("parameters",
+                              self.create_metadata(p, positive, negative, model_name))
 
-            # Initial file path
             file_base = filename
             file_ext = ".png"
             file_name = f"{file_base}{file_ext}"
-            file_path = os.path.join(full_output_folder, file_name)
+            file_path = os.path.join(full_output, file_name)
 
-            # Check if file exists and add iterator if necessary
             counter = 1
             while os.path.exists(file_path):
                 file_name = f"{file_base}_{counter}{file_ext}"
-                file_path = os.path.join(full_output_folder, file_name)
+                file_path = os.path.join(full_output, file_name)
                 counter += 1
 
-            # Save the image
             img.save(file_path, pnginfo=metadata, optimize=True)
             results.append({
                 "filename": file_name,
@@ -292,61 +281,56 @@ class FluxPromptSaver:
 
         return {"ui": {"images": results}}
 
-    def replace_date_placeholders(self, s):
-        # Regular expression to find all '%date:...%' placeholders
-        date_placeholder_pattern = re.compile(r'%date:(.*?)%')
+    def replace_dates(self, s):
+        pattern = re.compile(r'%date:(.*?)%')
 
-        def replace_match(match):
-            # Extract the date format from the placeholder
-            date_format = match.group(1)
-            # Map custom date tokens to strftime tokens
-            format_mappings = {
+        def repl(m):
+            fmt = m.group(1)
+            tokens = {
                 'yyyy': '%Y',
                 'MM': '%m',
                 'dd': '%d',
                 'HH': '%H',
                 'mm': '%M',
                 'ss': '%S',
-                # Add more mappings if needed
             }
-            # Replace custom tokens with strftime tokens
-            for token, strftime_token in format_mappings.items():
-                date_format = date_format.replace(token, strftime_token)
+            for t, r in tokens.items():
+                fmt = fmt.replace(t, r)
             try:
-                # Return the formatted date
-                return datetime.now().strftime(date_format)
-            except Exception as e:
-                # If formatting fails, return the original placeholder
-                return match.group(0)
+                return datetime.now().strftime(fmt)
+            except:
+                return m.group(0)
 
-        # Replace all date placeholders in the string
-        return date_placeholder_pattern.sub(replace_match, s)
+        return pattern.sub(repl, s)
 
-    def create_metadata_string(self, params, positive, negative, model_name):
+    def create_metadata(self, params, positive, negative, model_name):
         sampler_scheduler = f"{params['sampler']}_{params['scheduler']}" if params['scheduler'] != 'normal' else params['sampler']
-
         negative_text = "(not used)" if not negative else negative
-
         guidance_val = params.get('guidance', 1.0)
         seed_val = params.get('seed', '?')
 
-        return f"{positive}\nNegative prompt: {negative_text}\n" \
-               f"Steps: {params['steps']}, Sampler: {sampler_scheduler}, CFG scale: {guidance_val}, Seed: {seed_val}, " \
-               f"Size: {params['width']}x{params['height']}, Model hash: {params.get('model_hash', '')}, " \
-               f"Model: {model_name}, Version: ComfyUI"
+        return (
+            f"{positive}\nNegative prompt: {negative_text}\n"
+            f"Steps: {params['steps']}, Sampler: {sampler_scheduler}, CFG scale: {guidance_val}, "
+            f"Seed: {seed_val}, Size: {params['width']}x{params['height']}, "
+            f"Model: {model_name}, Version: ComfyUI"
+        )
 
+
+# -------------------------------------------------------------
+# Node: ModelName
+# -------------------------------------------------------------
 
 class ModelName:
     @classmethod
     def INPUT_TYPES(s):
         model_list = []
-        for model_folder in ["checkpoints", "models", "unet", "diffusion_models"]:
+        for folder in ["checkpoints", "models", "unet", "diffusion_models"]:
             try:
-                model_list.extend(folder_paths.get_filename_list(model_folder))
+                model_list.extend(folder_paths.get_filename_list(folder))
             except:
                 pass
         model_list = list(set(model_list))
-        
         return {"required": {"model_name": (model_list,)}}
 
     RETURN_TYPES = ("STRING",)
@@ -356,129 +340,75 @@ class ModelName:
     def get_name(self, model_name):
         return (model_name,)
 
-NODE_CLASS_MAPPINGS = {
-    "FluxPromptSaver": FluxPromptSaver,
-    "FluxTextSampler": FluxTextSampler,
-    "ModelName": ModelName
-}
 
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "FluxPromptSaver": "🐈‍⬛ Flux Prompt Saver",
-    "FluxTextSampler": "🐈‍⬛ Flux Text Sampler",
-    "ModelName": "🐈‍⬛ Model Name"
-}
+
+# -------------------------------------------------------------
+# Node: SamePixelResolutionCalculator
+# -------------------------------------------------------------
 
 class SamePixelResolutionCalculator:
     """
-    Calculates width and height for a given aspect ratio,
-    preserving total pixel count of a base square image.
+    Calculates width and height with same pixel count as base square.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "base_size": ("INT", {
-                    "default": 1328,
-                    "min": 1,
-                    "max": 8192,
-                    "step": 1
-                }),
-                "aspect_preset": ([
-                    "1:1",
-                    "4:3",
-                    "3:2",
-                    "16:9",
-                    "21:9",
-                    "Custom"
-                ],),
-                "custom_aspect_width": ("FLOAT", {
-                    "default": 16.0,
-                    "min": 1.0,
-                    "max": 100.0,
-                    "step": 0.1
-                }),
-                "custom_aspect_height": ("FLOAT", {
-                    "default": 9.0,
-                    "min": 1.0,
-                    "max": 100.0,
-                    "step": 0.1
-                }),
-                "round_multiple": (["none", "8", "64"],),
+                "base_size": ("INT", {"default": 1328, "min": 1, "max": 8192, "step": 8}),
+                "aspect_preset": (["1:1","4:3","3:2","16:9","21:9","Custom"],),
+                "custom_aspect_width": ("FLOAT", {"default": 16.0, "min": 1.0, "max": 100.0, "step": 0.1}),
+                "custom_aspect_height": ("FLOAT", {"default": 9.0, "min": 1.0, "max": 100.0, "step": 0.1}),
+                "round_multiple": (["none","8","64"],),
                 "portrait_mode": ("BOOLEAN", {"default": False}),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT",)
-    RETURN_NAMES = ("width", "height",)
+    RETURN_TYPES = ("INT","INT")
+    RETURN_NAMES = ("width","height")
     FUNCTION = "calculate"
     CATEGORY = "BK Utils/Resolution Tools"
 
-    def calculate(
-        self,
-        base_size,
-        aspect_preset,
-        custom_aspect_width,
-        custom_aspect_height,
-        round_multiple,
-        portrait_mode
-    ):
-        # Determine aspect ratio
+    def calculate(self, base_size, aspect_preset, custom_aspect_width, custom_aspect_height, round_multiple, portrait_mode):
         presets = {
-            "1:1": (1, 1),
-            "4:3": (4, 3),
-            "3:2": (3, 2),
-            "16:9": (16, 9),
-            "21:9": (21, 9)
+            "1:1": (1,1),
+            "4:3": (4,3),
+            "3:2": (3,2),
+            "16:9": (16,9),
+            "21:9": (21,9)
         }
 
         if aspect_preset in presets:
-            a, b = presets[aspect_preset]
+            a,b = presets[aspect_preset]
         else:
-            a, b = custom_aspect_width, custom_aspect_height
+            a,b = custom_aspect_width, custom_aspect_height
 
-        # Base pixel count (square)
         N = base_size * base_size
+        W = round(math.sqrt(N * a / b))
+        H = round(math.sqrt(N * b / a))
 
-        # Calculate W and H preserving total pixel count
-        W = math.sqrt(N * a / b)
-        H = math.sqrt(N * b / a)
-
-        # Round to integers
-        W, H = round(W), round(H)
-
-        # Swap for portrait orientation if needed
         if portrait_mode:
-            W, H = H, W
+            W,H = H,W
 
-        # Optionally round to nearest multiple of 8 or 64
         if round_multiple != "none":
             mult = int(round_multiple)
             W = round(W / mult) * mult
             H = round(H / mult) * mult
 
-        return (W, H)
+        return (W,H)
 
-import math
+
+# -------------------------------------------------------------
+# Node: IsOneOfGroupsActive
+# -------------------------------------------------------------
 
 class IsOneOfGroupsActive:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "group_name_contains": (
-                    "STRING",
-                    {
-                        "default": "",
-                        "multiline": False,
-                    },
-                ),
-                "active_state": (
-                    "BOOLEAN",
-                    {
-                        "default": False,
-                    },
-                ),
+                "group_name_contains": ("STRING", {"default": ""}),
+                "active_state": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -488,28 +418,31 @@ class IsOneOfGroupsActive:
     CATEGORY = "utils/logic"
 
     @classmethod
-    def IS_CHANGED(cls, group_name_contains, active_state):
+    def IS_CHANGED(cls, *args):
         return float("nan")
 
     def pass_state(self, group_name_contains, active_state):
         return (active_state,)
 
 
+
+# -------------------------------------------------------------
+#  Node Registration (ALL nodes merged here)
+# -------------------------------------------------------------
+
 NODE_CLASS_MAPPINGS = {
+    "FluxPromptSaver": FluxPromptSaver,
+    "FluxTextSampler": FluxTextSampler,
+    "ModelName": ModelName,
     "IsOneOfGroupsActive": IsOneOfGroupsActive,
+    "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "FluxPromptSaver": "🐈‍⬛ Flux Prompt Saver",
+    "FluxTextSampler": "🐈‍⬛ Flux Text Sampler",
+    "ModelName": "🐈‍⬛ Model Name",
     "IsOneOfGroupsActive": "IsOneOfGroupsActive",
+    "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator",
 }
 
-# Register node for ComfyUI
-NODE_CLASS_MAPPINGS = {
-    "SamePixelResolutionCalculator": SamePixelResolutionCalculator
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator"
-}
-
-print(f"[BK_Utils] Node class loaded: {SamePixelResolutionCalculator}")
