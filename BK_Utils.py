@@ -57,6 +57,97 @@ def conditioning_set_values(conditioning, values):
     return c
 
 
+def search_and_replace(text, extra_pnginfo, prompt):
+    if extra_pnginfo is None or prompt is None:
+        return text
+    # if %date: in text, then replace with date
+    #print(text)
+    if '%date:' in text:
+        for match in re.finditer(r'%date:(.*?)%', text):
+            date_match = match.group(1)
+            cursor = 0
+            date_pattern = ''
+            now = datetime.datetime.now()
+
+            pattern_map = {
+                'yyyy': now.strftime('%Y'),
+                'yy': now.strftime('%y'),
+                'MM': now.strftime('%m'),
+                'M': now.strftime('%m').lstrip('0'),
+                'dd': now.strftime('%d'),
+                'd': now.strftime('%d').lstrip('0'),
+                'hh': now.strftime('%H'),
+                'h': now.strftime('%H').lstrip('0'),
+                'mm': now.strftime('%M'),
+                'm': now.strftime('%M').lstrip('0'),
+                'ss': now.strftime('%S'),
+                's': now.strftime('%S').lstrip('0')
+            }
+
+            sorted_keys = sorted(pattern_map.keys(), key=len, reverse=True)
+
+            while cursor < len(date_match):
+                replaced = False
+                for key in sorted_keys:
+                    if date_match.startswith(key, cursor):
+                        date_pattern += pattern_map[key]
+                        cursor += len(key)
+                        replaced = True
+                        break
+                if not replaced:
+                    date_pattern += date_match[cursor]
+                    cursor += 1
+
+            text = text.replace('%date:' + match.group(1) + '%', date_pattern)
+    # Parse JSON if they are strings
+    if isinstance(extra_pnginfo, str):
+        extra_pnginfo = json.loads(extra_pnginfo)
+    if isinstance(prompt, str):
+        prompt = json.loads(prompt)
+
+    # Map from "Node name for S&R" to id in the workflow
+    node_to_id_map = {}
+    try:
+        for node in extra_pnginfo['workflow']['nodes']:
+            node_name = node['properties'].get('Node name for S&R')
+            node_id = node['id']
+            node_to_id_map[node_name] = node_id
+    except:
+        return text
+
+    # Find all patterns in the text that need to be replaced
+    patterns = re.findall(r"%([^%]+)%", text)
+    for pattern in patterns:
+        # Split the pattern to get the node name and widget name
+        node_name, widget_name = pattern.split('.')
+
+        # Find the id for this node name
+        node_id = node_to_id_map.get(node_name)
+        if node_id is None:
+            print(f"No node with name {node_name} found.")
+            # check if user entered id instead of node name
+            if node_name in node_to_id_map.values():
+                node_id = node_name
+            else:
+                continue
+
+        # Find the value of the specified widget in prompt JSON
+        prompt_node = prompt.get(str(node_id))
+        if prompt_node is None:
+            print(f"No prompt data for node with id {node_id}.")
+            continue
+
+        widget_value = prompt_node['inputs'].get(widget_name)
+        if widget_value is None:
+            print(f"No widget with name {widget_name} found for node {node_name}.")
+            continue
+
+        # Replace the pattern in the text
+        text = text.replace(f"%{pattern}%", str(widget_value))
+
+    return text
+
+
 # -------------------------------------------------------------
 # Node: FluxTextSampler
 # -------------------------------------------------------------
@@ -496,13 +587,13 @@ class FileNameDefinition:
                             prompt=None, extra_pnginfo=None):
         filename_prefix = ''
         if date_directory == 'true':
-            ts_str = datetime.datetime.now().strftime("%yyyy - %m - %d")
+            ts_str = datetime.datetime.now().strftime("%Y%m%d")
             filename_prefix += ts_str + '/'
         if custom_directory:
             custom_directory = search_and_replace(custom_directory, extra_pnginfo, prompt)
             filename_prefix += custom_directory + '/'
         if date == 'true':
-            ts_str = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+            ts_str = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             filename_prefix += ts_str
         if custom_text != '':
             custom_text = search_and_replace(custom_text, extra_pnginfo, prompt)
