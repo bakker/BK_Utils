@@ -475,10 +475,10 @@ class DynamicGroupSwitchMulti:
 
 
 # -------------------------------------------------------------
-# Node: FileNamePrefixDateDirFirst
+# Node: FileNameDefinition
 # -------------------------------------------------------------
 
-class FileNamePrefixDateDirFirst:
+class FileNameDefinition:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {'date': (['true','false'], {'default':'true'}),
@@ -524,7 +524,7 @@ NODE_CLASS_MAPPINGS = {
     "IsOneOfGroupsActive": IsOneOfGroupsActive,
     "DynamicGroupSwitchMulti": DynamicGroupSwitchMulti,
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
-    "FileNamePrefixDateDirFirst": FileNamePrefixDateDirFirst,
+    "FileNameDefinition": FileNameDefinition,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -534,6 +534,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "IsOneOfGroupsActive": "🐈‍⬛ IsOneOfGroupsActive",
     "DynamicGroupSwitchMulti": "🐈‍⬛ Dynamic Group Switch (3-way)",
     "SamePixelResolutionCalculator": "🐈‍⬛ Same Pixel Resolution Calculator",
-    "FileNamePrefixDateDirFirst": "🐈‍⬛ File Name Definition",
+    "FileNameDefinition": "🐈‍⬛ File Name Definition",
 }
 
