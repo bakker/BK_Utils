@@ -7,7 +7,6 @@ import numpy as np
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import folder_paths
-from datetime import datetime
 import comfy.samplers
 
 import comfy.samplers
