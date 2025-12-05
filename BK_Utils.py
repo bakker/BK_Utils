@@ -475,53 +475,41 @@ class DynamicGroupSwitchMulti:
 
 
 # -------------------------------------------------------------
-# Node: SubgraphPromptSwitchAutoDisplay
+# Node: FileNamePrefixDateDirFirst
 # -------------------------------------------------------------
 
-class SubgraphPromptSwitchAutoDisplay:
+class FileNamePrefixDateDirFirst:
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "wildcard_prompt": ("STRING", {"default": ""}),
-                "ollama_prompt": ("STRING", {"default": ""}),
-                "default_manual_prompt": ("STRING", {"default": ""}),
-                "wildcard_node": ("NODE", {}),
-                "ollama_node": ("NODE", {}),
-            }
-        }
+    def INPUT_TYPES(s):
+        return {"required": {'date': (['true','false'], {'default':'true'}),
+                             'date_directory': (['true','false'], {'default':'true'}),
+                             'custom_directory': ('STRING', {'default': ''}),
+                             'custom_text': ('STRING', {'default': ''})},
+                "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},}
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt",)
-    FUNCTION = "switch_prompt"
-    CATEGORY = "🐈‍⬛ BK Utils/Logic"
+    RETURN_TYPES = ('STRING',)
+    RETURN_NAMES = ('filename_prefix',)
+    FUNCTION = 'get_filename_prefix'
+    CATEGORY = '🐈‍⬛ BK_Utils/Meta'
 
-    def __init__(self):
-        self.current_source = "Default"
-
-    def switch_prompt(self, wildcard_prompt, ollama_prompt, default_manual_prompt, wildcard_node, ollama_node):
-        """
-        Automatically selects the first active prompt from the subgraph nodes.
-        Updates the node label with the active source.
-        """
-        # Check if nodes are bypassed
-        wildcard_active = not getattr(wildcard_node, "bypass", False)
-        ollama_active = not getattr(ollama_node, "bypass", False)
-
-        if wildcard_active:
-            self.current_source = "Wildcard"
-            return (wildcard_prompt,)
-        elif ollama_active:
-            self.current_source = "Ollama"
-            return (ollama_prompt,)
-        else:
-            self.current_source = "Manual"
-            return (default_manual_prompt,)
-
-    @property
-    def display_text(self):
-        # This property is shown in ComfyUI on the node
-        return f"Active Prompt: {self.current_source}"
+    def get_filename_prefix(self, date, date_directory, custom_directory, custom_text,
+                            prompt=None, extra_pnginfo=None):
+        filename_prefix = ''
+        if date_directory == 'true':
+            ts_str = datetime.datetime.now().strftime("%yyyy - %m - %d")
+            filename_prefix += ts_str + '/'
+        if custom_directory:
+            custom_directory = search_and_replace(custom_directory, extra_pnginfo, prompt)
+            filename_prefix += custom_directory + '/'
+        if date == 'true':
+            ts_str = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+            filename_prefix += ts_str
+        if custom_text != '':
+            custom_text = search_and_replace(custom_text, extra_pnginfo, prompt)
+            # remove invalid characters from filename
+            custom_text = re.sub(r'[<>:"/\\|?*]', '', custom_text)
+            filename_prefix += '_' + custom_text
+        return (filename_prefix,)
 
 
 
@@ -536,16 +524,16 @@ NODE_CLASS_MAPPINGS = {
     "IsOneOfGroupsActive": IsOneOfGroupsActive,
     "DynamicGroupSwitchMulti": DynamicGroupSwitchMulti,
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
-    "SubgraphPromptSwitchAutoDisplay": SubgraphPromptSwitchAutoDisplay,
+    "FileNamePrefixDateDirFirst": FileNamePrefixDateDirFirst,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FluxPromptSaver": "Flux Prompt Saver",
-    "FluxTextSampler": "Flux Text Sampler",
-    "ModelName": "Model Name",
-    "IsOneOfGroupsActive": "IsOneOfGroupsActive",
-    "DynamicGroupSwitchMulti": "Dynamic Group Switch (3-way)",
-    "SamePixelResolutionCalculator": "Same Pixel Resolution Calculator",
-    "SubgraphPromptSwitchAutoDisplay": "Prompt Source Switch",
+    "FluxPromptSaver": "🐈‍⬛ Flux Prompt Saver",
+    "FluxTextSampler": "🐈‍⬛ Flux Text Sampler",
+    "ModelName": "🐈‍⬛ Model Name",
+    "IsOneOfGroupsActive": "🐈‍⬛ IsOneOfGroupsActive",
+    "DynamicGroupSwitchMulti": "🐈‍⬛ Dynamic Group Switch (3-way)",
+    "SamePixelResolutionCalculator": "🐈‍⬛ Same Pixel Resolution Calculator",
+    "FileNamePrefixDateDirFirst": "🐈‍⬛ File Name Definition",
 }
 
