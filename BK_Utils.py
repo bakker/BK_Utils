@@ -581,7 +581,7 @@ class FileNameDefinition:
     RETURN_TYPES = ('STRING',)
     RETURN_NAMES = ('filename_prefix',)
     FUNCTION = 'get_filename_prefix'
-    CATEGORY = '🐈‍⬛ BK_Utils/Meta'
+    CATEGORY = '🐈‍⬛ BK Utils/Meta'
 
     def get_filename_prefix(self, date, date_directory, custom_directory, custom_text,
                             prompt=None, extra_pnginfo=None):
@@ -677,7 +677,7 @@ class ZImageTurboResolutions:
     RETURN_TYPES = ("INT", "INT", "INT")
     RETURN_NAMES = ("resolution", "width", "height")
     FUNCTION = "get_dimensions"
-    CATEGORY = "image/resolution"
+    CATEGORY = "🐈‍⬛ BK Utils/Resolution Tools"
     
     def get_dimensions(self, resolution, ratio):
         """
