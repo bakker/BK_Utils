@@ -728,6 +728,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DynamicGroupSwitchMulti": "🐈‍⬛ Dynamic Group Switch (3-way)",
     "SamePixelResolutionCalculator": "🐈‍⬛ Same Pixel Resolution Calculator",
     "FileNameDefinition": "🐈‍⬛ File Name Definition",
-    "ZImageTurboResolutions": "🐈‍⬛ Z-Image Turbo Resolutions",
+    "ZImageTurboResolutions": "🐈‍⬛ Z-Image-Turbo Resolutions",
 }
 
