@@ -1,6 +1,10 @@
 # BK_Utils/__init__.py
 from .BK_Utils import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
+
+# Set web directory for JavaScript files
+WEB_DIRECTORY = "./js"
+
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
 
 print(f"[BK_Utils] Loaded {len(NODE_CLASS_MAPPINGS)} node(s) from BK_Utils.py:")
