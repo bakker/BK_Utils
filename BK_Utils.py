@@ -718,6 +718,7 @@ NODE_CLASS_MAPPINGS = {
     "DynamicGroupSwitchMulti": DynamicGroupSwitchMulti,
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
     "FileNameDefinition": FileNameDefinition,
+    "ZImageTurboResolutions": ZImageTurboResolutions,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
