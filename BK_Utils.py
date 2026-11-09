@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import folder_paths
-import comfy.samplers
+import json
 
 import comfy.samplers
 import comfy.sample
@@ -105,47 +105,56 @@ def search_and_replace(text, extra_pnginfo, prompt):
     if isinstance(prompt, str):
         prompt = json.loads(prompt)
 
-    # Map from "Node name for S&R" to id in the workflow
-    node_to_id_map = {}
-    try:
-        for node in extra_pnginfo['workflow']['nodes']:
-            node_name = node['properties'].get('Node name for S&R')
-            node_id = node['id']
-            node_to_id_map[node_name] = node_id
-    except:
-        return text
+    for pattern in re.findall(r"%([^%]+)%", text):
+        if '.' not in pattern:
+            continue
+        node_name, widget_name = pattern.rsplit('.', 1)
 
-    # Find all patterns in the text that need to be replaced
-    patterns = re.findall(r"%([^%]+)%", text)
-    for pattern in patterns:
-        # Split the pattern to get the node name and widget name
-        node_name, widget_name = pattern.split('.')
-
-        # Find the id for this node name
-        node_id = node_to_id_map.get(node_name)
-        if node_id is None:
-            print(f"No node with name {node_name} found.")
-            # check if user entered id instead of node name
-            if node_name in node_to_id_map.values():
-                node_id = node_name
-            else:
-                continue
-
-        # Find the value of the specified widget in prompt JSON
-        prompt_node = prompt.get(str(node_id))
+        prompt_node = _find_prompt_node(prompt, extra_pnginfo, node_name)
         if prompt_node is None:
-            print(f"No prompt data for node with id {node_id}.")
+            print(f"[BK_Utils] No node '{node_name}' found for %{pattern}%")
             continue
 
-        widget_value = prompt_node['inputs'].get(widget_name)
-        if widget_value is None:
-            print(f"No widget with name {widget_name} found for node {node_name}.")
+        widget_value = prompt_node.get('inputs', {}).get(widget_name)
+        if widget_value is None or isinstance(widget_value, list):  # missing, or a link
+            print(f"[BK_Utils] No widget value '{widget_name}' on node '{node_name}'")
             continue
 
-        # Replace the pattern in the text
-        text = text.replace(f"%{pattern}%", str(widget_value))
+        text = text.replace(f"%{pattern}%", str(_clean_model_name(widget_value)))
 
     return text
+
+
+MODEL_EXTS = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf', '.sft')
+
+def _clean_model_name(value):
+    """'MOSS\\foo.safetensors' -> 'foo'; other values pass through."""
+    if isinstance(value, str) and value.lower().endswith(MODEL_EXTS):
+        return os.path.splitext(os.path.basename(value.replace('\\', '/')))[0]
+    return value
+
+
+def _find_prompt_node(prompt, extra_pnginfo, node_name):
+    # 1. Top-level "Node name for S&R" (original behaviour)
+    try:
+        for node in extra_pnginfo['workflow']['nodes']:
+            if node.get('properties', {}).get('Node name for S&R') == node_name:
+                pn = prompt.get(str(node['id']))
+                if pn:
+                    return pn
+    except Exception:
+        pass
+    # 2. Literal node id, including subgraph ids like "18:1"
+    if node_name in prompt:
+        return prompt[node_name]
+    # 3. Node title, then class type, across the flattened prompt (sees inside subgraphs)
+    for pn in prompt.values():
+        if pn.get('_meta', {}).get('title') == node_name:
+            return pn
+    for pn in prompt.values():
+        if pn.get('class_type') == node_name:
+            return pn
+    return None
 
 
 # -------------------------------------------------------------
@@ -388,7 +397,7 @@ class FluxPromptSaver:
             for t, r in tokens.items():
                 fmt = fmt.replace(t, r)
             try:
-                return datetime.now().strftime(fmt)
+                return datetime.datetime.now().strftime(fmt)
             except:
                 return m.group(0)
 
@@ -693,18 +702,6 @@ class ZImageTurboResolutions:
         height_int = int(height)
         
         return (resolution_int, width_int, height_int)
-
-
-# Node registration
-NODE_CLASS_MAPPINGS = {
-    "ZImageTurboResolutions": ZImageTurboResolutions
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "ZImageTurboResolutions": "Z-Image Turbo Resolutions"
-}
-
-
 
 # -------------------------------------------------------------
 #  Node Registration (ALL nodes merged here)
