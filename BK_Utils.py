@@ -11,6 +11,7 @@ import json
 
 import comfy.samplers
 import comfy.sample
+import comfy.model_base
 import random
 import time
 import logging
