@@ -8,6 +8,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import folder_paths
 import json
+import csv
 
 import comfy.samplers
 import comfy.sample
@@ -705,6 +706,132 @@ class ZImageTurboResolutions:
         return (resolution_int, width_int, height_int)
 
 # -------------------------------------------------------------
+# Node: BatchLogWriter
+# -------------------------------------------------------------
+
+class BatchLogWriter:
+    """
+    Appends one row per run to a CSV log in the output directory:
+    timestamp, seed, wildcard picks, LLM prompt and an empty verdict column.
+    Paths are built the same way ComfyUI's own image saver builds them
+    (abspath, no realpath), so a symlinked output directory works.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "wildcards": ("STRING", {"forceInput": True}),
+                "llm_prompt": ("STRING", {"forceInput": True}),
+                "seed": ("INT", {"forceInput": True}),
+                # Wire the same prefix your saver gets; only its folder part is used
+                "filename_prefix": ("STRING", {"default": "logs/batch"}),
+                "log_name": ("STRING", {"default": "batch_log"}),
+                # ";" is what Excel expects with Belgian/Dutch regional settings
+                "delimiter": ([";", ","],),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "write"
+    OUTPUT_NODE = True
+    CATEGORY = "🐈‍⬛ BK Utils/Meta"
+
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        return float("nan")  # log every run, even with identical inputs
+
+    def write(self, wildcards, llm_prompt, seed, filename_prefix, log_name, delimiter):
+        output_dir = os.path.abspath(folder_paths.get_output_directory())
+
+        subfolder = os.path.dirname(filename_prefix.replace("\\", "/").strip("/"))
+        safe_name = re.sub(r'[<>:"/\\|?*]', '', log_name).strip() or "batch_log"
+        log_path = os.path.abspath(os.path.join(output_dir, subfolder, safe_name + ".csv"))
+
+        # Same containment check as ComfyUI's image saver: abspath, not realpath
+        if os.path.commonpath((output_dir, log_path)) != output_dir:
+            raise ValueError(f"[BK_Utils] Log path outside output directory: {log_path}")
+
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        is_new = not os.path.exists(log_path)
+
+        # BOM only when the file is created, so Excel detects UTF-8
+        with open(log_path, "a", newline="", encoding="utf-8-sig" if is_new else "utf-8") as f:
+            writer = csv.writer(f, delimiter=delimiter)
+            if is_new:
+                writer.writerow(["timestamp", "seed", "wildcards", "llm_prompt", "verdict"])
+            writer.writerow([
+                datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                seed,
+                wildcards.strip(),
+                llm_prompt.strip(),
+                "",
+            ])
+
+        return {"ui": {}}
+
+# -------------------------------------------------------------
+# Node: SystemPromptSelector
+# -------------------------------------------------------------
+
+SYSTEM_PROMPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_prompts")
+SYSTEM_PROMPT_EXTS = (".txt", ".md")
+NO_PROMPTS = "(no prompts found)"
+
+
+def _list_system_prompts():
+    """All .txt/.md files under system_prompts/, subfolders included, as 'sub/name.txt'."""
+    os.makedirs(SYSTEM_PROMPT_DIR, exist_ok=True)
+    files = []
+    for root, _dirs, names in os.walk(SYSTEM_PROMPT_DIR):
+        for name in names:
+            if name.lower().endswith(SYSTEM_PROMPT_EXTS):
+                rel = os.path.relpath(os.path.join(root, name), SYSTEM_PROMPT_DIR)
+                files.append(rel.replace("\\", "/"))
+    return sorted(files, key=str.lower)
+
+
+def _system_prompt_path(name):
+    """Resolve a dropdown value to a path, refusing anything outside system_prompts/."""
+    base = os.path.normpath(SYSTEM_PROMPT_DIR)
+    path = os.path.normpath(os.path.join(base, name))
+    if not path.startswith(base + os.sep):
+        raise ValueError(f"[BK_Utils] Invalid system prompt name: {name}")
+    return path
+
+
+class SystemPromptSelector:
+    """
+    Loads a system prompt from BK_Utils/system_prompts/ so the text itself
+    never gets embedded in the workflow, only the file name.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        files = _list_system_prompts() or [NO_PROMPTS]
+        return {"required": {"system_prompt": (files,)}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("system_prompt",)
+    FUNCTION = "load"
+    CATEGORY = "🐈‍⬛ BK Utils/LLM"
+
+    @classmethod
+    def IS_CHANGED(cls, system_prompt):
+        # Re-run when the file is edited, without needing a different selection
+        try:
+            return os.path.getmtime(_system_prompt_path(system_prompt))
+        except (OSError, ValueError):
+            return float("nan")
+
+    def load(self, system_prompt):
+        if system_prompt == NO_PROMPTS:
+            raise FileNotFoundError(f"[BK_Utils] No .txt or .md files found in {SYSTEM_PROMPT_DIR}")
+        # utf-8-sig strips the BOM that some Windows editors add
+        with open(_system_prompt_path(system_prompt), encoding="utf-8-sig") as f:
+            return (f.read().strip(),)
+
+# -------------------------------------------------------------
 #  Node Registration (ALL nodes merged here)
 # -------------------------------------------------------------
 
@@ -717,6 +844,8 @@ NODE_CLASS_MAPPINGS = {
     "SamePixelResolutionCalculator": SamePixelResolutionCalculator,
     "FileNameDefinition": FileNameDefinition,
     "ZImageTurboResolutions": ZImageTurboResolutions,
+    "BatchLogWriter": BatchLogWriter,
+    "SystemPromptSelector": SystemPromptSelector,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -728,5 +857,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SamePixelResolutionCalculator": "🐈‍⬛ Same Pixel Resolution Calculator",
     "FileNameDefinition": "🐈‍⬛ File Name Definition",
     "ZImageTurboResolutions": "🐈‍⬛ Z-Image-Turbo Resolutions",
+    "BatchLogWriter": "🐈‍⬛ Batch Log Writer",
+    "SystemPromptSelector": "🐈‍⬛ System Prompt Selector",
 }
 
