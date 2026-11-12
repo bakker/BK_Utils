@@ -771,65 +771,109 @@ class BatchLogWriter:
         return {"ui": {}}
 
 # -------------------------------------------------------------
-# Node: SystemPromptSelector
+# Node: TextLibrarySelector
+#
+# Files live in <models>/text_library/<category folder>/, e.g.
+#   models/text_library/system_prompts/gladiator.txt
+#   models/text_library/wildcard_lists/LUDI_GLADIATORII.txt
+# Because it's registered as a model folder, a symlinked models directory
+# works, and extra_model_paths.yaml can add more text_library locations.
 # -------------------------------------------------------------
 
-SYSTEM_PROMPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_prompts")
-SYSTEM_PROMPT_EXTS = (".txt", ".md")
-NO_PROMPTS = "(no prompts found)"
+TEXT_LIBRARY = "text_library"
+TEXT_LIBRARY_CATEGORIES = {
+    "System Prompts": "system_prompts",
+    "Wildcard Lists": "wildcard_lists",
+}
+TEXT_LIBRARY_EXTS = {".txt", ".md"}
+TEXT_LIBRARY_NO_FILES = "(no files found)"
 
 
-def _list_system_prompts():
-    """All .txt/.md files under system_prompts/, subfolders included, as 'sub/name.txt'."""
-    os.makedirs(SYSTEM_PROMPT_DIR, exist_ok=True)
-    files = []
-    for root, _dirs, names in os.walk(SYSTEM_PROMPT_DIR):
-        for name in names:
-            if name.lower().endswith(SYSTEM_PROMPT_EXTS):
-                rel = os.path.relpath(os.path.join(root, name), SYSTEM_PROMPT_DIR)
-                files.append(rel.replace("\\", "/"))
-    return sorted(files, key=str.lower)
+def _register_text_library():
+    default_root = os.path.join(folder_paths.models_dir, TEXT_LIBRARY)
+    if TEXT_LIBRARY in folder_paths.folder_names_and_paths:
+        # Already defined, e.g. via extra_model_paths.yaml: keep its paths, add our extensions
+        paths, exts = folder_paths.folder_names_and_paths[TEXT_LIBRARY]
+        folder_paths.folder_names_and_paths[TEXT_LIBRARY] = (paths, set(exts) | TEXT_LIBRARY_EXTS)
+    else:
+        folder_paths.folder_names_and_paths[TEXT_LIBRARY] = ([default_root], set(TEXT_LIBRARY_EXTS))
+    for sub in TEXT_LIBRARY_CATEGORIES.values():
+        os.makedirs(os.path.join(default_root, sub), exist_ok=True)
 
 
-def _system_prompt_path(name):
-    """Resolve a dropdown value to a path, refusing anything outside system_prompts/."""
-    base = os.path.normpath(SYSTEM_PROMPT_DIR)
-    path = os.path.normpath(os.path.join(base, name))
-    if not path.startswith(base + os.sep):
-        raise ValueError(f"[BK_Utils] Invalid system prompt name: {name}")
-    return path
+_register_text_library()
 
 
-class SystemPromptSelector:
+def _text_library_files():
+    try:
+        files = folder_paths.get_filename_list(TEXT_LIBRARY)
+    except Exception:
+        files = []
+    dirs = set(TEXT_LIBRARY_CATEGORIES.values())
+    files = [f for f in files if f.replace("\\", "/").split("/")[0] in dirs]
+    # The placeholder is always valid, so an empty category gives a clear error at run time
+    return sorted(files, key=str.lower) + [TEXT_LIBRARY_NO_FILES]
+
+
+# Innermost {a|b|c} group: contains at least one "|" and no nested braces
+_WILDCARD_GROUP = re.compile(r"\{([^{}|]*\|[^{}]*)\}")
+
+
+def _expand_wildcards(text, seed):
+    """Seeded expansion of {a|b|c} groups, nested groups included."""
+    rng = random.Random(seed)
+    while True:
+        expanded = _WILDCARD_GROUP.sub(lambda m: rng.choice(m.group(1).split("|")).strip(), text)
+        if expanded == text:
+            return expanded
+        text = expanded
+
+
+class TextLibrarySelector:
     """
-    Loads a system prompt from BK_Utils/system_prompts/ so the text itself
-    never gets embedded in the workflow, only the file name.
+    Loads a system prompt or wildcard list from models/text_library/,
+    so only the file name ends up in the workflow, never the text.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
-        files = _list_system_prompts() or [NO_PROMPTS]
-        return {"required": {"system_prompt": (files,)}}
+        return {
+            "required": {
+                "category": (list(TEXT_LIBRARY_CATEGORIES.keys()),),
+                "file": (_text_library_files(),),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                                 "control_after_generate": True}),
+            }
+        }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("system_prompt",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text", "expanded")
     FUNCTION = "load"
     CATEGORY = "🐈‍⬛ BK Utils/LLM"
 
     @classmethod
-    def IS_CHANGED(cls, system_prompt):
-        # Re-run when the file is edited, without needing a different selection
-        try:
-            return os.path.getmtime(_system_prompt_path(system_prompt))
-        except (OSError, ValueError):
-            return float("nan")
+    def IS_CHANGED(cls, category, file, seed):
+        # Re-run when the file is edited or the seed changes
+        path = folder_paths.get_full_path(TEXT_LIBRARY, file)
+        mtime = os.path.getmtime(path) if path and os.path.exists(path) else float("nan")
+        return f"{mtime}-{seed}"
 
-    def load(self, system_prompt):
-        if system_prompt == NO_PROMPTS:
-            raise FileNotFoundError(f"[BK_Utils] No .txt or .md files found in {SYSTEM_PROMPT_DIR}")
+    def load(self, category, file, seed):
+        folder = TEXT_LIBRARY_CATEGORIES[category]
+        root = os.path.join(folder_paths.models_dir, TEXT_LIBRARY, folder)
+        if file == TEXT_LIBRARY_NO_FILES:
+            raise FileNotFoundError(f"[BK_Utils] No .txt or .md files found for {category} in {root}")
+        if not file.replace("\\", "/").startswith(folder + "/"):
+            raise ValueError(f"[BK_Utils] '{file}' is not in category {category}")
+
+        path = folder_paths.get_full_path(TEXT_LIBRARY, file)
+        if path is None:
+            raise FileNotFoundError(f"[BK_Utils] File not found: {file}")
+
         # utf-8-sig strips the BOM that some Windows editors add
-        with open(_system_prompt_path(system_prompt), encoding="utf-8-sig") as f:
-            return (f.read().strip(),)
+        with open(path, encoding="utf-8-sig") as f:
+            text = f.read().strip()
+        return (text, _expand_wildcards(text, seed))
 
 # -------------------------------------------------------------
 #  Node Registration (ALL nodes merged here)
@@ -845,7 +889,7 @@ NODE_CLASS_MAPPINGS = {
     "FileNameDefinition": FileNameDefinition,
     "ZImageTurboResolutions": ZImageTurboResolutions,
     "BatchLogWriter": BatchLogWriter,
-    "SystemPromptSelector": SystemPromptSelector,
+    "TextLibrarySelector": TextLibrarySelector,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -858,6 +902,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FileNameDefinition": "🐈‍⬛ File Name Definition",
     "ZImageTurboResolutions": "🐈‍⬛ Z-Image-Turbo Resolutions",
     "BatchLogWriter": "🐈‍⬛ Batch Log Writer",
-    "SystemPromptSelector": "🐈‍⬛ System Prompt Selector",
+    "TextLibrarySelector": "🐈‍⬛ Text Library Selector",
 }
 
