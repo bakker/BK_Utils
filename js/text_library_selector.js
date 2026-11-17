@@ -26,6 +26,18 @@ async function fetchAllFiles(fallback) {
     }
 }
 
+// Replace the contents of a combo's value list without replacing the array itself.
+// A widget promoted onto a subgraph node can hold a reference to the inner widget's
+// array; assigning a new array would leave that outer dropdown with a stale list.
+function setComboValues(widget, values) {
+    const current = widget.options?.values;
+    if (Array.isArray(current)) {
+        current.splice(0, current.length, ...values);
+    } else if (widget.options) {
+        widget.options.values = [...values];
+    }
+}
+
 function applyFilter(node, allFiles, keepValue) {
     const categoryWidget = node.widgets?.find((w) => w.name === "category");
     const fileWidget = node.widgets?.find((w) => w.name === "file");
@@ -35,12 +47,13 @@ function applyFilter(node, allFiles, keepValue) {
     const filtered = allFiles.filter((v) => v.replace(/\\/g, "/").startsWith(dir + "/"));
     const values = filtered.length ? filtered : [NO_FILES];
 
-    fileWidget.options.values = values;
+    setComboValues(fileWidget, values);
     // When loading a workflow, keep the saved value so a missing file gives a clear error
     if (!keepValue && !values.includes(fileWidget.value)) {
         fileWidget.value = values[0];
     }
     node.setDirtyCanvas?.(true, true);
+    node.graph?.setDirtyCanvas?.(true, true);
 }
 
 app.registerExtension({
@@ -63,7 +76,9 @@ app.registerExtension({
                     return r;
                 };
             }
-            applyFilter(node, initialFiles, false);
+            // Keep the saved value here too: onNodeCreated also runs before a
+            // workflow (or subgraph) restores its widget values
+            applyFilter(node, initialFiles, true);
             return result;
         };
 

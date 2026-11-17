@@ -859,12 +859,16 @@ class TextLibrarySelector:
         return f"{mtime}-{seed}"
 
     def load(self, category, file, seed):
-        folder = TEXT_LIBRARY_CATEGORIES[category]
-        root = os.path.join(folder_paths.models_dir, TEXT_LIBRARY, folder)
         if file == TEXT_LIBRARY_NO_FILES:
+            folder = TEXT_LIBRARY_CATEGORIES[category]
+            root = os.path.join(folder_paths.models_dir, TEXT_LIBRARY, folder)
             raise FileNotFoundError(f"[BK_Utils] No .txt or .md files found for {category} in {root}")
-        if not file.replace("\\", "/").startswith(folder + "/"):
-            raise ValueError(f"[BK_Utils] '{file}' is not in category {category}")
+
+        # The file path decides the category; the category widget is only a filter
+        # for the dropdown. A file picked from a promoted widget on a subgraph node
+        # may not match the inner category widget, and that should still just work.
+        if file.replace("\\", "/").split("/")[0] not in TEXT_LIBRARY_CATEGORIES.values():
+            raise ValueError(f"[BK_Utils] '{file}' is not in a text_library category folder")
 
         path = folder_paths.get_full_path(TEXT_LIBRARY, file)
         if path is None:
@@ -873,6 +877,86 @@ class TextLibrarySelector:
         # utf-8-sig strips the BOM that some Windows editors add
         with open(path, encoding="utf-8-sig") as f:
             text = f.read().strip()
+        return (text, _expand_wildcards(text, seed))
+
+# -------------------------------------------------------------
+# Nodes: SystemPromptLoader / WildcardListLoader
+# Fixed-category versions of TextLibrarySelector: the file list is filtered
+# on the server, so no JS is involved and promoting the file widget onto a
+# subgraph node behaves like any standard dropdown.
+# -------------------------------------------------------------
+
+def _text_library_files_in(folder):
+    files = [f for f in _text_library_files()
+             if f.replace("\\", "/").startswith(folder + "/")]
+    return files or [TEXT_LIBRARY_NO_FILES]
+
+
+def _read_text_library_file(folder, file):
+    if file == TEXT_LIBRARY_NO_FILES:
+        root = os.path.join(folder_paths.models_dir, TEXT_LIBRARY, folder)
+        raise FileNotFoundError(f"[BK_Utils] No .txt or .md files found in {root}")
+    if not file.replace("\\", "/").startswith(folder + "/"):
+        raise ValueError(f"[BK_Utils] '{file}' is not in {folder}")
+    path = folder_paths.get_full_path(TEXT_LIBRARY, file)
+    if path is None:
+        raise FileNotFoundError(f"[BK_Utils] File not found: {file}")
+    # utf-8-sig strips the BOM that some Windows editors add
+    with open(path, encoding="utf-8-sig") as f:
+        return f.read().strip()
+
+
+def _text_library_mtime(file):
+    path = folder_paths.get_full_path(TEXT_LIBRARY, file)
+    return os.path.getmtime(path) if path and os.path.exists(path) else float("nan")
+
+
+class SystemPromptLoader:
+    """Loads a system prompt from models/text_library/system_prompts/."""
+    FOLDER = "system_prompts"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"file": (_text_library_files_in(cls.FOLDER),)}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("system_prompt",)
+    FUNCTION = "load"
+    CATEGORY = "🐈‍⬛ BK Utils/LLM"
+
+    @classmethod
+    def IS_CHANGED(cls, file):
+        return _text_library_mtime(file)  # re-run when the file is edited
+
+    def load(self, file):
+        return (_read_text_library_file(self.FOLDER, file),)
+
+
+class WildcardListLoader:
+    """Loads a wildcard list from models/text_library/wildcard_lists/ and expands it."""
+    FOLDER = "wildcard_lists"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file": (_text_library_files_in(cls.FOLDER),),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff,
+                                 "control_after_generate": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text", "expanded")
+    FUNCTION = "load"
+    CATEGORY = "🐈‍⬛ BK Utils/LLM"
+
+    @classmethod
+    def IS_CHANGED(cls, file, seed):
+        return f"{_text_library_mtime(file)}-{seed}"
+
+    def load(self, file, seed):
+        text = _read_text_library_file(self.FOLDER, file)
         return (text, _expand_wildcards(text, seed))
 
 # -------------------------------------------------------------
