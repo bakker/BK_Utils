@@ -974,6 +974,8 @@ NODE_CLASS_MAPPINGS = {
     "ZImageTurboResolutions": ZImageTurboResolutions,
     "BatchLogWriter": BatchLogWriter,
     "TextLibrarySelector": TextLibrarySelector,
+    "SystemPromptLoader": SystemPromptLoader,
+    "WildcardListLoader": WildcardListLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -987,5 +989,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZImageTurboResolutions": "🐈‍⬛ Z-Image-Turbo Resolutions",
     "BatchLogWriter": "🐈‍⬛ Batch Log Writer",
     "TextLibrarySelector": "🐈‍⬛ Text Library Selector",
+    "SystemPromptLoader": "🐈‍⬛ System Prompt Loader",
+    "WildcardListLoader": "🐈‍⬛ Wildcard List Loader",
 }
 
