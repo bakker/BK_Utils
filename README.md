@@ -15,7 +15,7 @@ All nodes show up in the node menu under **🐈‍⬛ BK Utils**.
 | [Z-Image-Turbo Resolutions](#z-image-turbo-resolutions) | Resolution Tools | Preset resolutions for Z-Image-Turbo at three size tiers |
 | [File Name Definition](#file-name-definition) | Meta | Builds a `filename_prefix` from dates, folders and values from other nodes |
 | [Batch Log Writer](#batch-log-writer) | Meta | Appends one CSV row per run, for evaluating large batches |
-| [Text Library Selector](#text-library-selector) | LLM | Loads system prompts and wildcard lists from files, with seeded `{a\|b\|c}` expansion |
+| [Text Library Selector](#text-library-selector) | LLM | Loads system prompts and wildcard lists from files, with seeded `{a\|b\|c}` and `__wildcard__` expansion |
 | [IsOneOfGroupsActive](#isoneofgroupsactive) | Logic | Boolean pass-through for group-based switching |
 | [Dynamic Group Switch (3-way)](#dynamic-group-switch-3-way) | Logic | Picks one of three strings depending on which group is active |
 
@@ -287,9 +287,9 @@ Loads a system prompt or a wildcard list from a text file, so only the **file na
 | Output | Notes |
 |---|---|
 | `text` | The file contents as is |
-| `expanded` | The same text with every `{a\|b\|c}` group replaced by one option, chosen by `seed` |
+| `expanded` | The same text with every `{a\|b\|c}` group and `__wildcard__` reference replaced by one option, chosen by `seed` |
 
-Expansion handles nested groups (`{red {dark\|light}\|blue}`) and always gives the same result for the same seed. Braces without a `|` are left alone, and `__wildcard__` file references are not expanded here (leave those to a wildcard node such as Impact Pack's).
+Expansion handles nested groups (`{red {dark\|light}\|blue}`), `__wildcard__` file references (including references inside the referenced files) and always gives the same result for the same seed. When Impact Pack is installed its wildcard engine does the expansion, so syntax and wildcard folders match Impact's own nodes. Without Impact Pack a built-in expander resolves `__name__`, `__dir/name__` and `__dir/*__` against `.txt` files in `text_library/wildcard_lists/` (and a registered `wildcards` model folder, if any); unknown references are left as they are.
 
 #### Notes
 

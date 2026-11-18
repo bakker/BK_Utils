@@ -2,6 +2,7 @@ import datetime
 import math
 import os
 import re
+import fnmatch
 import torch
 import numpy as np
 from PIL import Image
@@ -819,14 +820,92 @@ def _text_library_files():
 _WILDCARD_GROUP = re.compile(r"\{([^{}|]*\|[^{}]*)\}")
 
 
-def _expand_wildcards(text, seed):
-    """Seeded expansion of {a|b|c} groups, nested groups included."""
+# __name__ / __dir/name__ / __dir/*__ file reference (Impact Pack syntax)
+_WILDCARD_FILE = re.compile(r"__([\w.\-/\\*?]+?)__")
+_WILDCARD_MAX_PASSES = 100  # guards against files that reference each other in a loop
+_WILDCARD_FILE_EXTS = (".txt",)
+
+
+def _impact_wildcards():
+    """Impact Pack's wildcard module, if Impact Pack is installed and loaded."""
+    try:
+        import impact.wildcards as iw
+        return iw if callable(getattr(iw, "process", None)) else None
+    except Exception:
+        return None
+
+
+def _wildcard_dirs():
+    """Folders searched for __name__ files when Impact Pack isn't available."""
+    dirs = []
+    try:
+        dirs += [os.path.join(p, "wildcard_lists") for p in folder_paths.get_folder_paths(TEXT_LIBRARY)]
+    except Exception:
+        pass
+    if "wildcards" in folder_paths.folder_names_and_paths:
+        dirs += folder_paths.get_folder_paths("wildcards")
+    return [d for d in dirs if os.path.isdir(d)]
+
+
+def _wildcard_index():
+    """{lowercase name without extension, '/' separated: [options]} for all wildcard files."""
+    index = {}
+    for root_dir in _wildcard_dirs():
+        for dirpath, _, filenames in os.walk(root_dir, followlinks=True):
+            for fn in filenames:
+                if not fn.lower().endswith(_WILDCARD_FILE_EXTS):
+                    continue
+                full = os.path.join(dirpath, fn)
+                key = os.path.splitext(os.path.relpath(full, root_dir))[0].replace("\\", "/").lower()
+                if key in index:
+                    continue  # first folder wins
+                try:
+                    with open(full, encoding="utf-8-sig") as f:
+                        lines = [l.strip() for l in f]
+                except OSError:
+                    continue
+                index[key] = [l for l in lines if l and not l.startswith("#")]
+    return index
+
+
+def _expand_builtin(text, seed):
+    """Fallback expander: __file__ references and {a|b|c} groups, nested in any order."""
     rng = random.Random(seed)
-    while True:
-        expanded = _WILDCARD_GROUP.sub(lambda m: rng.choice(m.group(1).split("|")).strip(), text)
+    index = None
+
+    def pick_file(m):
+        nonlocal index
+        if index is None:
+            index = _wildcard_index()
+        name = m.group(1).replace("\\", "/").lower()
+        if any(c in name for c in "*?"):
+            options = [o for k in sorted(index) if fnmatch.fnmatchcase(k, name) for o in index[k]]
+        else:
+            options = index.get(name, [])
+        return rng.choice(options) if options else m.group(0)  # unknown: leave as-is
+
+    for _ in range(_WILDCARD_MAX_PASSES):
+        expanded = _WILDCARD_FILE.sub(pick_file, text)
+        expanded = _WILDCARD_GROUP.sub(lambda m: rng.choice(m.group(1).split("|")).strip(), expanded)
         if expanded == text:
-            return expanded
+            break
         text = expanded
+    return text
+
+
+def _expand_wildcards(text, seed):
+    """
+    Seeded expansion of {a|b|c} groups and __wildcard__ file references, nested included.
+    Uses Impact Pack's engine when available, so the result follows the same rules
+    (and the same wildcard folders) as Impact's own wildcard nodes.
+    """
+    iw = _impact_wildcards()
+    if iw is not None:
+        try:
+            return iw.process(text, seed)
+        except Exception as e:
+            logging.warning(f"[BK_Utils] Impact Pack wildcard processing failed, using built-in expander: {e}")
+    return _expand_builtin(text, seed)
 
 
 class TextLibrarySelector:
@@ -992,4 +1071,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SystemPromptLoader": "🐈‍⬛ System Prompt Loader",
     "WildcardListLoader": "🐈‍⬛ Wildcard List Loader",
 }
-
